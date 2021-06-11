@@ -23,6 +23,8 @@
 void main(void);                                                   //COMPULSORY
 void init_ADC(void);											   //COMPULSORY
 void init_timer_2(void);
+void init_timer_6(void);
+
 #ifdef TRUESTUDIO												   //COMPULSORY
 	void reset_clock_to_48Mhz(void);							   //COMPULSORY
 #endif															   //COMPULSORY
@@ -38,6 +40,8 @@ void main(void)
 #endif															   //COMPULSORY
 
 	init_timer_2();
+	init_timer_6();
+	NVIC_EnableIRQ(TIM6_DAC_IRQn);
 
 	while(1)
 	{
@@ -81,10 +85,10 @@ void init_ADC(void)
 	ADC1->CR |= ADC_CR_ADEN;
 	//
 	ADC1->CHSELR |= ADC_CHSELR_CHSEL6;
-	// Setup in wait mode
-	ADC1->CFGR1 |= ADC_CFGR1_WAIT;
+	// Setup in SINGLE SHOT mode
+	ADC1->CFGR1 &= ~ADC_CFGR1_CONT;
 	// Setup 10 bit resolution
-
+	ADC1->CFGR1 |= ADC_CFGR1_RES_0;
 	//
 	while((ADC1->ISR & ADC_ISR_ADRDY) == 0);
 }
@@ -96,25 +100,33 @@ void init_timer_2(void)
 	GPIOB -> MODER |= GPIO_MODER_MODER10_1;	// Set B10 to alternate function
 	GPIOB -> AFR[1] |= 0x02 << (4*2);		// Set AFR to AF2 for B10 (TIM2_CH3)
 
-	TIM2 -> PSC = 0;						// Set PSC to 0 such that counter counts at the rate of f_CK_PSC
-	TIM2 -> ARR = 3200;						// Set ARR to 3200 to achieve PWM signal of 15kHz
+	TIM2 -> PSC = 2;						// Set prescaler to 2 to math ARR with CCR
+	TIM2 -> ARR = 1023;						// Set ARR to 1023 to achieve PWM signal of 15kHz
 	TIM2 -> CCMR1 |= TIM_CCMR2_OC3M_2
 				  | TIM_CCMR2_OC3M_1 	    // Configure PWM mode on OC3 (OC3 because AF2 for B10 is TIM2_CH3!)
 				  | TIM_CCMR2_OC3PE; 	    // Enable preload register on OC3
 	TIM2 -> CCER |= TIM_CCER_CC3E;			// Enable output on OC3
 	TIM2 -> CR1 |= TIM_CR1_CEN;				// Enable counter
 	
-	TIM2 -> CCR3 = 3200/4;					// Configure duty cycle for 25% of ARR (using CCR3 because TIM2_CH3)
+	TIM2 -> CCR3 = 1023;					// Configure duty cycle for 100% of ARR (using CCR3 because TIM2_CH3)
 }
 
 void init_timer_6(void)
-{					
-	TIM6_DAC_IRQn
+{
+	RCC -> APB1ENR |= RCC_APB1ENR_TIM6EN;	// Set clock to timer 6
+	TIM6 -> PSC = 36;						// PSC = 36 to generate delay of 50mS
+	TIM6 -> ARR = 66666;					// ARR = 66 666 to generate delay of 50mS
+
+	TIM6 -> DIER |= TIM_DIER_UIE;			// Allow overflow interrupts
+	TIM6 -> CR1 |= TIM_CR1_CEN;				// Enable counter for timer 6
+	NVIC_EnableIRQ(TIM6_DAC_IRQn);			// Enable interrupt
 }
 
 // INTERRUPT HANDLERS --------------------------------------------------------|
 
 void TIM6_DAC_IRQHandler(void)
 {				
-	TIM6->SR &= ~TIM_SR_UIF;	//acknowledge interrupt
+	TIM6->SR &= ~TIM_SR_UIF;				// Acknowledge interrupt
+	init_ADC();
+	init_timer_2();
 }
