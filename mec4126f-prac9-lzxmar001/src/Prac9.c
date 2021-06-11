@@ -38,7 +38,6 @@ void main(void)
 #endif															   //COMPULSORY
 
 	init_timer_2();
-	init_timer_6();
 
 	while(1)
 	{
